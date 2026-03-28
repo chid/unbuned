@@ -10,7 +10,7 @@ Reverse engineer, analyze, and learn from Bun applications
 
 [![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/vibheksoni/unbuned)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/vibheksoni/unbuned)
 [![Stars](https://img.shields.io/github/stars/vibheksoni/unbuned?style=social)](https://github.com/vibheksoni/unbuned/stargazers)
 [![Forks](https://img.shields.io/github/forks/vibheksoni/unbuned?style=social)](https://github.com/vibheksoni/unbuned/forks)
 
@@ -41,7 +41,7 @@ Reverse engineer, analyze, and learn from Bun applications
 - Intelligent JavaScript/binary boundary detection
 - Refine boundaries using end markers (`debugId`, `sourceMappingURL`, `})();`)
 - Extract and save pure, readable JavaScript
-- Support for Windows, Linux, and macOS executables
+- Support for Windows PE and macOS Mach-O executables
 
 ---
 
@@ -100,11 +100,11 @@ Both examples demonstrate unbuned's ability to extract massive amounts of clean,
 
 unbuned uses a multi-stage extraction process:
 
-1. **PE Header Parsing**: Locates the `.bun` section in Windows PE executables
-2. **Magic Byte Detection**: Falls back to magic byte search (`\xe5\x02\x80\x01`) if needed
-3. **JavaScript Marker**: Finds the `// @bun` comment marking the start of JS code
-4. **Boundary Detection**: Analyzes byte patterns to detect where JavaScript ends
-5. **Refinement**: Uses source map markers and code patterns to refine the boundary
+1. **Format Detection**: Detects Windows PE or macOS Mach-O executables
+2. **Section Discovery**: Locates the `.bun` section in PE or `__BUN,__bun` in Mach-O
+3. **Fallback Detection**: Falls back to magic byte search (`\xe5\x02\x80\x01`) for unsupported containers when possible
+4. **JavaScript Marker**: Finds the `// @bun` comment marking the start of JS code
+5. **Boundary Detection**: Analyzes byte patterns to detect where JavaScript ends
 6. **Extraction**: Decodes and saves pure UTF-8 JavaScript
 
 ### Boundary Detection Algorithm
@@ -132,6 +132,7 @@ The tool uses a sophisticated heuristic to detect where JavaScript ends:
 ## Requirements
 
 - Python 3.6 or higher
+- Windows or macOS target executable
 - No external dependencies
 
 ---
@@ -139,6 +140,7 @@ The tool uses a sophisticated heuristic to detect where JavaScript ends:
 ## Limitations
 
 - Extracts bundled JavaScript only (not native modules or assets)
+- FAT/universal Mach-O binaries are not supported yet
 - Minified code remains minified (use a beautifier for readability)
 - Some obfuscated code may be harder to analyze
 
