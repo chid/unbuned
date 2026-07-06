@@ -135,7 +135,7 @@ class ExtractBunJsTests(unittest.TestCase):
         result, output, extracted = self.run_extraction(build_pe_fixture(section_data), "sample.exe")
 
         self.assertTrue(result)
-        self.assertIn("Extracted: output/sample/sample.js", output)
+        self.assertIn(f"Extracted: {Path('output') / 'sample' / 'sample.js'}", output)
         self.assertEqual(extracted, '// @bun\nconsole.log("pe");\n')
 
     def test_extracts_from_macho_bun_section_and_ignores_false_positive(self):
@@ -148,8 +148,22 @@ class ExtractBunJsTests(unittest.TestCase):
         result, output, extracted = self.run_extraction(build_macho_fixture(section_data), "sample")
 
         self.assertTrue(result)
-        self.assertIn("Extracted: output/sample/sample.js", output)
+        self.assertIn(f"Extracted: {Path('output') / 'sample' / 'sample.js'}", output)
         self.assertEqual(extracted, '// @bun\nconsole.log("mac");\n')
+
+    def test_extracts_from_magic_fallback(self):
+        fixture_bytes = (
+            b"header"
+            + unbuned.BUN_MAGIC
+            + b"// @bun\nconsole.log(\"fallback\");\n"
+            + bytes(range(1, 32))
+        )
+
+        result, output, extracted = self.run_extraction(fixture_bytes, "fallback.bin")
+
+        self.assertTrue(result)
+        self.assertIn(f"Extracted: {Path('output') / 'fallback' / 'fallback.js'}", output)
+        self.assertEqual(extracted, '// @bun\nconsole.log("fallback");\n')
 
     def test_reports_missing_macho_bun_section(self):
         section_data = b"// @bun\nconsole.log(\"mac\");\n\x00"
@@ -167,6 +181,12 @@ class ExtractBunJsTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertIn("FAT/universal Mach-O binaries are not supported yet", output)
+
+    def test_reports_missing_bundle_for_short_input(self):
+        result, output, _ = self.run_extraction(b"MZ", "too-short.exe")
+
+        self.assertFalse(result)
+        self.assertIn("Unsupported executable format", output)
 
 
 if __name__ == "__main__":

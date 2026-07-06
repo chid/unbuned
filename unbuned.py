@@ -4,6 +4,7 @@ import struct
 import sys
 from pathlib import Path
 
+BUN_MAGIC = b'\xe5\x02\x80\x01'
 FAT_MAGIC = 0xCAFEBABE
 FAT_MAGIC_64 = 0xCAFEBABF
 LC_SEGMENT = 0x1
@@ -23,19 +24,30 @@ def find_bun_section(data, pe_offset):
     Returns:
         tuple: (start_offset, size) or (None, None) if not found
     """
+    if pe_offset + 24 > len(data):
+        return None, None
+
     num_sections = struct.unpack('<H', data[pe_offset+6:pe_offset+8])[0]
     optional_header_size = struct.unpack('<H', data[pe_offset+20:pe_offset+22])[0]
     section_table_offset = pe_offset + 24 + optional_header_size
     
     for i in range(num_sections):
         section_offset = section_table_offset + (i * 40)
+        if section_offset + 40 > len(data):
+            return None, None
+
         section_name = data[section_offset:section_offset+8].rstrip(b'\x00').decode('ascii', errors='ignore')
         
         if section_name == '.bun':
             virtual_size = struct.unpack('<I', data[section_offset+8:section_offset+12])[0]
             raw_size = struct.unpack('<I', data[section_offset+16:section_offset+20])[0]
             raw_offset = struct.unpack('<I', data[section_offset+20:section_offset+24])[0]
-            return raw_offset, min(virtual_size, raw_size)
+            section_size = min(virtual_size, raw_size)
+            section_end = raw_offset + section_size
+            if section_size == 0 or section_end > len(data):
+                return None, None
+
+            return raw_offset, section_size
     
     return None, None
 
@@ -157,6 +169,10 @@ def find_js_boundary(bundle, chunk_size=1000, threshold=0.3):
     return len(bundle)
 
 
+def is_binary_byte(byte):
+    return byte > 127 or (byte < 32 and byte not in [9, 10, 13])
+
+
 def find_first_binary_byte(bundle):
     """
     Find the first byte that does not look like plain-text JavaScript.
@@ -168,7 +184,7 @@ def find_first_binary_byte(bundle):
         int|None: Offset of the first binary-looking byte, or None if not found
     """
     for index, byte in enumerate(bundle):
-        if byte > 127 or (byte < 32 and byte not in [9, 10, 13]):
+        if is_binary_byte(byte):
             return index
 
     return None
@@ -200,7 +216,7 @@ def refine_boundary(bundle, initial_end):
             if line_end >= 0:
                 check_after = next_data[line_end+1:line_end+101]
                 if len(check_after) > 0:
-                    binary_ratio = sum(1 for b in check_after if b > 127 or (b < 32 and b not in [9,10,13])) / len(check_after)
+                    binary_ratio = sum(1 for b in check_after if is_binary_byte(b)) / len(check_after)
                     if binary_ratio > 0.4:
                         return initial_end + line_end + 1
     
@@ -213,7 +229,7 @@ def refine_boundary(bundle, initial_end):
 
             check_ahead = next_data[end:end+101]
             if len(check_ahead) > 0:
-                binary_ratio = sum(1 for b in check_ahead if b > 127 or (b < 32 and b not in [9,10,13])) / len(check_ahead)
+                binary_ratio = sum(1 for b in check_ahead if is_binary_byte(b)) / len(check_ahead)
                 if binary_ratio > 0.5:
                     return initial_end + end
 
@@ -269,16 +285,15 @@ def extract_bun_js(exe_path):
         print(f"Error: File not found: {exe_path}")
         return False
     
-    with open(exe_path, 'rb') as f:
-        data = f.read()
+    data = exe_path.read_bytes()
 
     bundle = None
     error_message = None
     stop_at_nul = False
 
-    if data[0:2] == b'MZ':
+    if len(data) >= 0x40 and data[0:2] == b'MZ':
         pe_offset = struct.unpack('<I', data[0x3c:0x40])[0]
-        if data[pe_offset:pe_offset+4] == b'PE\x00\x00':
+        if pe_offset + 4 <= len(data) and data[pe_offset:pe_offset+4] == b'PE\x00\x00':
             js_start, js_size = find_bun_section(data, pe_offset)
             if js_start is not None:
                 bundle = data[js_start:js_start+js_size]
@@ -293,8 +308,7 @@ def extract_bun_js(exe_path):
             return False
 
     if bundle is None:
-        magic = b'\xe5\x02\x80\x01'
-        pos = data.find(magic)
+        pos = data.find(BUN_MAGIC)
         if pos != -1:
             bundle = data[pos:]
 
